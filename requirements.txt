@@ -5,3 +5,4 @@ alembic
 python-dotenv
 pydantic
 pydantic-settings
+networkx
