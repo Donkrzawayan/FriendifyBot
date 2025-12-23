@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 import asyncio
 
+from bot.checks import is_session_manager
 from database.base import async_session_factory
 from database.models import User, Round, Meeting
 from database.repository import MeetingRepository
@@ -21,6 +22,7 @@ class SessionCog(commands.Cog):
         self.is_running: bool = False
 
     @commands.command(name="start")
+    @is_session_manager()
     async def start_round(self, ctx: commands.Context, duration_minutes: int = 5):
         logger.info(f"Command !start called by {ctx.author} (Guild: {ctx.guild.id}, Duration: {duration_minutes}m)")
         if self.is_running:
@@ -52,6 +54,7 @@ class SessionCog(commands.Cog):
         )
 
     @commands.command(name="stop")
+    @is_session_manager()
     async def stop_round(self, ctx: commands.Context):
         logger.info(f"Command !stop called by {ctx.author} (Guild: {ctx.guild.id})")
         if not self.is_running or not self.current_round_task:
@@ -60,6 +63,23 @@ class SessionCog(commands.Cog):
             return
 
         self.current_round_task.cancel()
+
+    @start_round.error
+    @stop_round.error
+    async def session_error_handler(self, ctx: commands.Context, error):
+        if isinstance(error, commands.CheckFailure):
+            logger.warning(f"Unauthorized access attempt by {ctx.author} (Command: {ctx.command})")
+            await ctx.reply("**Access denied!** You do not have permission to manage sessions.")
+
+        elif isinstance(error, commands.BadArgument):
+            await ctx.reply("Bad argument.")
+
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("Missing argument!")
+
+        else:
+            logger.error(f"Unhandled error in command {ctx.command}: {error}", exc_info=True)
+            await ctx.send("An unexpected error has occurred.")
 
     # --- Helper Methods ---
 
@@ -151,7 +171,7 @@ class SessionCog(commands.Cog):
             if seconds > warning_time:
                 await asyncio.sleep(seconds - warning_time)
 
-                warning_msg = "⏰ **30 seconds remaining!**"
+                warning_msg = "**30 seconds remaining!**"
                 notify_tasks = [ch.send(warning_msg) for ch in voice_mgr.temp_channels]
                 if notify_tasks:
                     await asyncio.gather(*notify_tasks)

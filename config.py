@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     DISCORD_TOKEN: str
+    ALLOWED_ROLE_ID: int
 
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
