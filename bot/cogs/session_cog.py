@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Tuple, Union, Optional
 import discord
 from discord.ext import commands
@@ -9,6 +10,8 @@ from database.repository import MeetingRepository
 from services.matchmaker import MatchmakerService
 from services.voice_service import VoiceService
 
+logger = logging.getLogger(__name__)
+
 
 class SessionCog(commands.Cog):
     def __init__(self, bot):
@@ -19,7 +22,9 @@ class SessionCog(commands.Cog):
 
     @commands.command(name="start")
     async def start_round(self, ctx: commands.Context, duration_minutes: int = 5):
+        logger.info(f"Command !start called by {ctx.author} (Guild: {ctx.guild.id}, Duration: {duration_minutes}m)")
         if self.is_running:
+            logger.warning(f"User {ctx.author} tried to start a round while one is running.")
             await ctx.send("A round is already in progress! Use `!stop` to end it first.")
             return
 
@@ -35,23 +40,28 @@ class SessionCog(commands.Cog):
 
         await ctx.send(f"Preparing round for {len(participants)} people. Duration: {duration_minutes} min.")
 
-        pairs, _ = await self._process_matchmaking_and_db(ctx, participants, duration_minutes)
+        pairs, round_id = await self._process_matchmaking_and_db(ctx, participants, duration_minutes)
         if not pairs:
             await ctx.send("Could not create any pairs!")
             return
 
+        logger.info("Starting lifecycle task...")
         self.is_running = True
         self.current_round_task = asyncio.create_task(
-            self._round_lifecycle(ctx, pairs, sitter, user_map, lobby_channel, duration_minutes)
+            self._round_lifecycle(ctx, pairs, sitter, user_map, lobby_channel, duration_minutes, round_id)
         )
 
     @commands.command(name="stop")
     async def stop_round(self, ctx: commands.Context):
+        logger.info(f"Command !stop called by {ctx.author} (Guild: {ctx.guild.id})")
         if not self.is_running or not self.current_round_task:
+            logger.warning(f"User {ctx.author} tried to stop a round while one is not running.")
             await ctx.send("There is no round currently running.")
             return
 
         self.current_round_task.cancel()
+
+    # --- Helper Methods ---
 
     async def _validate_start_conditions(
         self, ctx: commands.Context, duration_minutes: int
@@ -65,8 +75,6 @@ class SessionCog(commands.Cog):
             return None
 
         return ctx.author.voice.channel
-
-    # --- Helper Methods ---
 
     def _prepare_participants(self, ctx: commands.Context, channel: Union[discord.VoiceChannel, discord.StageChannel]):
         all_members = [m for m in channel.members if not m.bot]
@@ -128,10 +136,12 @@ class SessionCog(commands.Cog):
         user_map: Dict[int, discord.Member],
         lobby_channel: Union[discord.VoiceChannel, discord.StageChannel],
         duration_minutes: int,
+        round_id: int,
     ):
         voice_mgr = VoiceService(ctx.guild)
 
         try:
+            logger.info(f"Round {round_id}: Preparing channels for {len(pairs)} pairs.")
             await voice_mgr.prepare_channels(len(pairs))
             await voice_mgr.move_pairs_to_channels(pairs, user_map)
 
@@ -152,12 +162,14 @@ class SessionCog(commands.Cog):
                 await asyncio.sleep(seconds)
 
         except asyncio.CancelledError:
+            logger.info(f"Round {round_id}: Cancelled manually.")
             raise
 
         except Exception as e:
-            print(f"Error in round lifecycle: {e}")
+            logger.error(f"Round {round_id}: CRITICAL ERROR during lifecycle!", exc_info=True)
 
         finally:
+            logger.info(f"Round {round_id}: Cleanup started.")
             users_to_return = []
             for uid1, uid2 in pairs:
                 if uid1 in user_map:
@@ -172,6 +184,7 @@ class SessionCog(commands.Cog):
 
             self.is_running = False
             self.current_round_task = None
+            logger.info(f"Round {round_id}: Cleanup finished.")
 
 
 async def setup(bot):

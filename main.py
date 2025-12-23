@@ -1,8 +1,13 @@
 import asyncio
+import logging
 import discord
 from discord.ext import commands
 from config import settings
-import sys
+
+from logger_config import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 intents = discord.Intents.default()
 intents.members = True
@@ -14,8 +19,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print("------")
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logger.info("------")
 
 
 async def main():
@@ -28,4 +33,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        pass
+        logger.info("Bot stopped by user (Ctrl+C).")
