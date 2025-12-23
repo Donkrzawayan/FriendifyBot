@@ -14,9 +14,15 @@ class SessionCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.matchmaker = MatchmakerService()
+        self.current_round_task: Optional[asyncio.Task] = None
+        self.is_running: bool = False
 
     @commands.command(name="start")
     async def start_round(self, ctx: commands.Context, duration_minutes: int = 5):
+        if self.is_running:
+            await ctx.send("A round is already in progress! Use `!stop` to end it first.")
+            return
+
         lobby_channel = await self._validate_start_conditions(ctx, duration_minutes)
         if not lobby_channel:
             return
@@ -29,12 +35,23 @@ class SessionCog(commands.Cog):
 
         await ctx.send(f"Preparing round for {len(participants)} people. Duration: {duration_minutes} min.")
 
-        pairs, round_id = await self._process_matchmaking_and_db(ctx, participants, duration_minutes)
+        pairs, _ = await self._process_matchmaking_and_db(ctx, participants, duration_minutes)
         if not pairs:
             await ctx.send("Could not create any pairs!")
             return
 
-        await self._execute_session(ctx, pairs, sitter, user_map, lobby_channel, duration_minutes)
+        self.is_running = True
+        self.current_round_task = asyncio.create_task(
+            self._round_lifecycle(ctx, pairs, sitter, user_map, lobby_channel, duration_minutes)
+        )
+
+    @commands.command(name="stop")
+    async def stop_round(self, ctx: commands.Context):
+        if not self.is_running or not self.current_round_task:
+            await ctx.send("There is no round currently running.")
+            return
+
+        self.current_round_task.cancel()
 
     async def _validate_start_conditions(
         self, ctx: commands.Context, duration_minutes: int
@@ -49,6 +66,8 @@ class SessionCog(commands.Cog):
 
         return ctx.author.voice.channel
 
+    # --- Helper Methods ---
+
     def _prepare_participants(self, ctx: commands.Context, channel: Union[discord.VoiceChannel, discord.StageChannel]):
         all_members = [m for m in channel.members if not m.bot]
         user_map = {m.id: m for m in all_members}
@@ -62,8 +81,7 @@ class SessionCog(commands.Cog):
                 sitter = ctx.author
                 participants.remove(ctx.author)
             else:
-                # Author ran command but isn't in the list for some reason?
-                # just pick the last person
+                # Author ran command but isn't in the list; pick the last person
                 sitter = participants.pop()
 
         return participants, sitter, user_map
@@ -77,7 +95,6 @@ class SessionCog(commands.Cog):
 
         async with async_session_factory() as session:
             repo = MeetingRepository(session)
-
             past_pairs = await repo.get_past_pairs(user_ids)
             pairs, _ = self.matchmaker.create_pairs(user_ids, past_pairs)
 
@@ -103,7 +120,7 @@ class SessionCog(commands.Cog):
 
         return pairs, round_id
 
-    async def _execute_session(
+    async def _round_lifecycle(
         self,
         ctx: commands.Context,
         pairs: List[Tuple[int, int]],
@@ -114,33 +131,47 @@ class SessionCog(commands.Cog):
     ):
         voice_mgr = VoiceService(ctx.guild)
 
-        await voice_mgr.prepare_channels(len(pairs))
-        await voice_mgr.move_pairs_to_channels(pairs, user_map)
+        try:
+            await voice_mgr.prepare_channels(len(pairs))
+            await voice_mgr.move_pairs_to_channels(pairs, user_map)
 
-        seconds = duration_minutes * 60
-        warning_time = 30
+            seconds = duration_minutes * 60
+            warning_time = 30
 
-        if seconds > warning_time:
-            await asyncio.sleep(seconds - warning_time)
-            warning_msg = "**30 seconds remaining!**"
-            notify_tasks = [ch.send(warning_msg) for ch in voice_mgr.temp_channels]
-            await ctx.send(warning_msg)
-            await asyncio.gather(*notify_tasks)
+            if seconds > warning_time:
+                await asyncio.sleep(seconds - warning_time)
 
-            await asyncio.sleep(warning_time)
-        else:
-            await asyncio.sleep(seconds)
+                warning_msg = "⏰ **30 seconds remaining!**"
+                notify_tasks = [ch.send(warning_msg) for ch in voice_mgr.temp_channels]
+                if notify_tasks:
+                    await asyncio.gather(*notify_tasks)
+                await ctx.send(warning_msg)
 
-        users_to_return = []
-        for uid1, uid2 in pairs:
-            if uid1 in user_map:
-                users_to_return.append(user_map[uid1])
-            if uid2 in user_map:
-                users_to_return.append(user_map[uid2])
+                await asyncio.sleep(warning_time)
+            else:
+                await asyncio.sleep(seconds)
 
-        await voice_mgr.return_users_to_lobby(users_to_return, lobby_channel)
+        except asyncio.CancelledError:
+            raise
 
-        await voice_mgr.cleanup()
+        except Exception as e:
+            print(f"Error in round lifecycle: {e}")
+
+        finally:
+            users_to_return = []
+            for uid1, uid2 in pairs:
+                if uid1 in user_map:
+                    users_to_return.append(user_map[uid1])
+                if uid2 in user_map:
+                    users_to_return.append(user_map[uid2])
+
+            if users_to_return:
+                await voice_mgr.return_users_to_lobby(users_to_return, lobby_channel)
+
+            await voice_mgr.cleanup()
+
+            self.is_running = False
+            self.current_round_task = None
 
 
 async def setup(bot):
