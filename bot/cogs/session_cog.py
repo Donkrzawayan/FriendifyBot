@@ -168,16 +168,25 @@ class SessionCog(commands.Cog):
             seconds = duration_minutes * 60
             warning_time = 30
 
-            if seconds > warning_time:
-                await asyncio.sleep(seconds - warning_time)
+            hop_delay = 0.4
+            channels_count = len(voice_mgr.temp_channels)
+            half_total_hop_time = (channels_count * hop_delay) / 2
+            start_signaling_at_remaining = warning_time + half_total_hop_time
 
-                warning_msg = "**30 seconds remaining!**"
-                notify_tasks = [ch.send(warning_msg) for ch in voice_mgr.temp_channels]
-                if notify_tasks:
-                    await asyncio.gather(*notify_tasks)
-                await ctx.send(warning_msg)
+            if seconds > start_signaling_at_remaining:
+                await asyncio.sleep(seconds - start_signaling_at_remaining)
+
+                logger.info(f"Round {round_id}: Starting audio signal run (Duration: ~{half_total_hop_time * 2}s)")
+                asyncio.create_task(self._signal_channels(ctx, voice_mgr.temp_channels, delay=hop_delay))
+
+                await asyncio.sleep(half_total_hop_time)
+
+                participants_mentions = [m.mention for m in user_map.values()]
+                notification_msg = f"{' '.join(participants_mentions)}\n**30 seconds remaining!**"
+                await ctx.send(notification_msg)
 
                 await asyncio.sleep(warning_time)
+
             else:
                 await asyncio.sleep(seconds)
 
@@ -200,11 +209,40 @@ class SessionCog(commands.Cog):
             if users_to_return:
                 await voice_mgr.return_users_to_lobby(users_to_return, lobby_channel)
 
+            if ctx.guild.voice_client:
+                await ctx.guild.voice_client.disconnect()
+
             await voice_mgr.cleanup()
 
             self.is_running = False
             self.current_round_task = None
             logger.info(f"Round {round_id}: Cleanup finished.")
+
+    async def _signal_channels(self, ctx: commands.Context, channels: List[discord.VoiceChannel], delay: float):
+        vc = ctx.guild.voice_client
+
+        if not vc:
+            try:
+                if channels:
+                    vc = await channels[0].connect()
+            except Exception as e:
+                logger.warning(f"Failed to connect to voice for signaling: {e}")
+                return
+
+        for channel in channels:
+            try:
+                if vc.channel.id != channel.id:
+                    await vc.move_to(channel)
+                await asyncio.sleep(delay)
+
+            except Exception as e:
+                logger.warning(f"Failed to signal channel {channel.name}: {e}")
+                vc = ctx.guild.voice_client
+                if not vc:
+                    break
+
+        if vc:
+            await vc.disconnect()
 
 
 async def setup(bot):
