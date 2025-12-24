@@ -1,10 +1,12 @@
 import logging
 from typing import Dict, List, Tuple, Union, Optional
+from zoneinfo import ZoneInfo
 import discord
 from discord.ext import commands
 import asyncio
 
 from bot.checks import is_session_manager
+from config import settings
 from database.base import async_session_factory
 from database.models import User, Round, Meeting
 from database.repository import MeetingRepository
@@ -63,6 +65,56 @@ class SessionCog(commands.Cog):
             return
 
         self.current_round_task.cancel()
+
+    @commands.command(name="history", help="Sends you a private message with your last 10 meetings.")
+    async def history(self, ctx: commands.Context):
+        logger.info(f"Command !history called by {ctx.author} (Guild: {ctx.guild.id})")
+        try:
+            await ctx.message.delete()
+        except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+            pass
+
+        async with async_session_factory() as session:
+            repo = MeetingRepository(session)
+            history = await repo.get_user_history(ctx.author.id, limit=10)
+
+        if not history:
+            await ctx.author.send("You haven't participated in any meetings yet.")
+            return
+
+        header = f"{'No.':<4} | {'Date':<16} | {'Partner'}"
+        separator = "-" * (len(header) + 4)
+        lines = [
+            "**Your Last 10 Meetings:**",
+            "```",  # Start Code Block
+            header,
+            separator,
+        ]
+
+        local_tz = ZoneInfo(settings.TIMEZONE)
+
+        for idx, meeting in enumerate(history, 1):
+            if meeting.user_1_id == ctx.author.id:
+                partner = meeting.user_2
+            else:
+                partner = meeting.user_1
+            partner_name = partner.username if partner else "Unknown User"
+
+            local_time = meeting.round.started_at.astimezone(local_tz)
+            date_str = local_time.strftime("%d.%m.%Y %H:%M")  # Polish format
+
+            row = f"{str(idx) + '.':<4} | {date_str:<16} | {partner_name}"
+            lines.append(row)
+
+        lines.append("```")  # End Code Block
+        message_content = "\n".join(lines)
+
+        try:
+            await ctx.author.send(message_content)
+            logger.info(f"Sent DM to {ctx.author} (Guild: {ctx.guild.id})")
+        except discord.Forbidden:
+            logger.info(f"Couldn't send DM to {ctx.author} (Guild: {ctx.guild.id})")
+            await ctx.send(f"{ctx.author.mention}, could not send a DM. Please enable DMs from server members.")
 
     @start_round.error
     @stop_round.error

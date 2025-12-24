@@ -8,3 +8,4 @@ pydantic-settings
 networkx
 pytest
 PyNaCl
+tzdata
