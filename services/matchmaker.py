@@ -1,13 +1,15 @@
+from datetime import datetime, timezone
 import networkx as nx
-from typing import List, Tuple, Set
+from typing import Dict, List, Tuple
 
 
 class MatchmakerService:
     def create_pairs(
-        self, user_ids: List[int], past_pairs: Set[Tuple[int, int]]
+        self, user_ids: List[int], history_map: Dict[Tuple[int, int], datetime]
     ) -> Tuple[List[Tuple[int, int]], List[int]]:
         """
-        Creates pairs while avoiding duplicates.
+        Generates optimal pairs.
+        :param history_map: Dict {(u1, u2): last_met_timestamp}.
         Returns: (pairs, unmatched_users)
         """
         if len(user_ids) < 2:
@@ -16,8 +18,8 @@ class MatchmakerService:
         graph = nx.Graph()
         graph.add_nodes_from(user_ids)
 
-        WEIGHT_NEVER_MET = 100
-        WEIGHT_MET_BEFORE = 1
+        WEIGHT_NEVER_MET = 1_000_000_000  # ~31 years
+        now = datetime.now(timezone.utc)
 
         for i in range(len(user_ids)):
             for j in range(i + 1, len(user_ids)):
@@ -26,8 +28,10 @@ class MatchmakerService:
 
                 # Check if this pair has met before
                 pair_key = tuple(sorted((u1, u2)))
-                if pair_key in past_pairs:
-                    weight = WEIGHT_MET_BEFORE
+                if pair_key in history_map:
+                    last_met = history_map[pair_key]
+                    delta = (now - last_met).total_seconds()
+                    weight = max(1, int(delta))
                 else:
                     weight = WEIGHT_NEVER_MET
 

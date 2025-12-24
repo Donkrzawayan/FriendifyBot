@@ -123,8 +123,8 @@ class SessionCog(commands.Cog):
 
         async with async_session_factory() as session:
             repo = MeetingRepository(session)
-            past_pairs = await repo.get_past_pairs(user_ids)
-            pairs, _ = self.matchmaker.create_pairs(user_ids, past_pairs)
+            history_map = await repo.get_past_meetings_with_time(user_ids)
+            pairs, _ = self.matchmaker.create_pairs(user_ids, history_map)
 
             if not pairs:
                 return None, None
