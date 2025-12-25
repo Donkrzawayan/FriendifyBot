@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 import asyncio
 
-from bot.checks import is_session_manager
+from bot.checks import is_in_correct_channel, is_session_manager
 from config import settings
 from database.base import async_session_factory
 from database.models import User, Round, Meeting
@@ -22,6 +22,9 @@ class SessionCog(commands.Cog):
         self.matchmaker = MatchmakerService()
         self.current_round_task: Optional[asyncio.Task] = None
         self.is_running: bool = False
+
+    async def cog_check(self, ctx: commands.Context) -> bool:
+        return await is_in_correct_channel().predicate(ctx)
 
     @commands.command(name="start")
     @is_session_manager()
@@ -120,6 +123,10 @@ class SessionCog(commands.Cog):
     @stop_round.error
     async def session_error_handler(self, ctx: commands.Context, error):
         if isinstance(error, commands.CheckFailure):
+            if ctx.guild and settings.ALLOWED_CHANNEL_IDS:
+                if ctx.channel.id not in settings.ALLOWED_CHANNEL_IDS:
+                    return
+
             logger.warning(f"Unauthorized access attempt by {ctx.author} (Command: {ctx.command})")
             await ctx.reply("**Access denied!** You do not have permission to manage sessions.")
 
@@ -246,7 +253,7 @@ class SessionCog(commands.Cog):
             logger.info(f"Round {round_id}: Cancelled manually.")
             raise
 
-        except Exception as e:
+        except Exception:
             logger.error(f"Round {round_id}: CRITICAL ERROR during lifecycle!", exc_info=True)
 
         finally:

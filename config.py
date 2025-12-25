@@ -1,9 +1,11 @@
+from typing import List
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     DISCORD_TOKEN: str
     ALLOWED_ROLE_ID: int
+    ALLOWED_CHANNEL_IDS: List[int] = []
     TIMEZONE: str = "Europe/Warsaw"
 
     POSTGRES_USER: str
@@ -21,4 +23,4 @@ class Settings(BaseSettings):
         extra = "ignore"
 
 
-settings = Settings()
+settings = Settings()  # pyright: ignore[reportCallIssue]

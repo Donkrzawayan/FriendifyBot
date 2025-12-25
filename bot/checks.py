@@ -7,7 +7,7 @@ def is_session_manager():
     async def predicate(ctx: commands.Context):
         if not ctx.guild:
             return False
-        
+
         if ctx.author.id == ctx.guild.owner_id:
             return True
 
@@ -18,6 +18,22 @@ def is_session_manager():
             role = ctx.guild.get_role(settings.ALLOWED_ROLE_ID)
             if role and role in ctx.author.roles:
                 return True
+
+        return False
+
+    return commands.check(predicate)
+
+
+def is_in_correct_channel():
+    async def predicate(ctx: commands.Context) -> bool:
+        if ctx.guild is None:
+            return True
+
+        if not settings.ALLOWED_CHANNEL_IDS:
+            return True
+
+        if ctx.channel.id in settings.ALLOWED_CHANNEL_IDS:
+            return True
 
         return False
 
