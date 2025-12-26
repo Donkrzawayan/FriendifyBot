@@ -32,7 +32,7 @@ class SessionCog(commands.Cog):
         logger.info(f"Command !start called by {ctx.author} (Guild: {ctx.guild.id}, Duration: {duration_minutes}m)")
         if self.is_running:
             logger.warning(f"User {ctx.author} tried to start a round while one is running.")
-            await ctx.send("A round is already in progress! Use `!stop` to end it first.")
+            await ctx.reply("A round is already in progress! Use `!stop` to end it first.")
             return
 
         lobby_channel = await self._validate_start_conditions(ctx, duration_minutes)
@@ -42,14 +42,14 @@ class SessionCog(commands.Cog):
         participants, sitter, user_map = self._prepare_participants(ctx, lobby_channel)
 
         if len(participants) < 2:
-            await ctx.send("Not enough people to start (minimum 2).")
+            await ctx.reply("Not enough people to start (minimum 2).")
             return
 
         await ctx.send(f"Preparing round for {len(participants)} people. Duration: {duration_minutes} min.")
 
         pairs, round_id = await self._process_matchmaking_and_db(ctx, participants, duration_minutes)
         if not pairs:
-            await ctx.send("Could not create any pairs!")
+            await ctx.reply("Could not create any pairs!")
             return
 
         logger.info("Starting lifecycle task...")
@@ -64,7 +64,7 @@ class SessionCog(commands.Cog):
         logger.info(f"Command !stop called by {ctx.author} (Guild: {ctx.guild.id})")
         if not self.is_running or not self.current_round_task:
             logger.warning(f"User {ctx.author} tried to stop a round while one is not running.")
-            await ctx.send("There is no round currently running.")
+            await ctx.reply("There is no round currently running.")
             return
 
         self.current_round_task.cancel()
@@ -117,7 +117,7 @@ class SessionCog(commands.Cog):
             logger.info(f"Sent DM to {ctx.author} (Guild: {ctx.guild.id})")
         except discord.Forbidden:
             logger.info(f"Couldn't send DM to {ctx.author} (Guild: {ctx.guild.id})")
-            await ctx.send(f"{ctx.author.mention}, could not send a DM. Please enable DMs from server members.")
+            await ctx.reply(f"{ctx.author.mention}, could not send a DM. Please enable DMs from server members.")
 
     @start_round.error
     @stop_round.error
@@ -269,7 +269,7 @@ class SessionCog(commands.Cog):
                 await voice_mgr.return_users_to_lobby(users_to_return, lobby_channel)
 
             if ctx.guild.voice_client:
-                await ctx.guild.voice_client.disconnect()
+                await ctx.guild.voice_client.disconnect(force=False)
 
             await voice_mgr.cleanup()
 
