@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17.7
+    image: postgres:17.7-alpine
     container_name: friendify_postgres
     restart: always
     environment:
