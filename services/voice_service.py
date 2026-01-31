@@ -41,6 +41,9 @@ class VoiceService:
             member1 = user_id_map.get(uid1)
             member2 = user_id_map.get(uid2)
 
+            await target_channel.set_permissions(member1, connect=True, speak=True, view_channel=True)
+            await target_channel.set_permissions(member2, connect=True, speak=True, view_channel=True)
+
             if member1 and member1.voice:
                 tasks.append(member1.move_to(target_channel))
             if member2 and member2.voice:
