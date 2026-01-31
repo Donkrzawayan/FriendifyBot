@@ -52,6 +52,8 @@ class SessionCog(commands.Cog):
             await ctx.reply("Could not create any pairs!")
             return
 
+        self._log_match_results(round_id, pairs, sitter, user_map)
+
         logger.info("Starting lifecycle task...")
         self.is_running = True
         self.current_round_task = asyncio.create_task(
@@ -71,7 +73,9 @@ class SessionCog(commands.Cog):
 
     @commands.command(name="history", help="Sends you a private message with your last 10 meetings.")
     async def history(self, ctx: commands.Context):
-        logger.info(f"Command !history called by {ctx.author} (Guild: {ctx.guild.id})")
+        source = f"Guild: {ctx.guild.id}" if ctx.guild else "DM"
+        logger.info(f"Command !history called by {ctx.author} ({source})")
+
         try:
             await ctx.message.delete()
         except (discord.Forbidden, discord.NotFound, discord.HTTPException):
@@ -114,9 +118,9 @@ class SessionCog(commands.Cog):
 
         try:
             await ctx.author.send(message_content)
-            logger.info(f"Sent DM to {ctx.author} (Guild: {ctx.guild.id})")
+            logger.info(f"Sent DM to {ctx.author} ({source})")
         except discord.Forbidden:
-            logger.info(f"Couldn't send DM to {ctx.author} (Guild: {ctx.guild.id})")
+            logger.info(f"Couldn't send DM to {ctx.author} ({source})")
             await ctx.reply(f"{ctx.author.mention}, could not send a DM. Please enable DMs from server members.")
 
     @start_round.error
@@ -206,6 +210,28 @@ class SessionCog(commands.Cog):
             round_id = new_round.id
 
         return pairs, round_id
+
+    def _fmt_user(self, user: Optional[discord.Member], uid: int) -> str:
+        """Formats the user for logs: Nickname (Name) or ID if none."""
+        if user:
+            return f"{user.display_name} ({user.name})"
+        return f"Unknown_ID_{uid}"
+
+    def _log_match_results(
+        self, round_id: int, pairs: List[Tuple[int, int]], sitter: Optional[int], user_map: Dict[int, discord.Member]
+    ):
+        logger.info(f"=== MATCHING RESULTS FOR ROUND {round_id} ===")
+
+        for idx, (uid1, uid2) in enumerate(pairs, 1):
+            p1 = self._fmt_user(user_map.get(uid1), uid1)
+            p2 = self._fmt_user(user_map.get(uid2), uid2)
+            logger.info(f"Pair {idx}: {p1} <-> {p2}")
+
+        if sitter:
+            s_str = self._fmt_user(user_map.get(sitter), sitter)
+            logger.info(f"Sitter (No pair): {s_str}")
+
+        logger.info("===========================================")
 
     async def _round_lifecycle(
         self,
