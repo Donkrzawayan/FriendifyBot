@@ -1,10 +1,18 @@
-from sqlalchemy import Integer, String, DateTime, ForeignKey, BigInteger
+import enum
+from sqlalchemy import Integer, String, DateTime, ForeignKey, BigInteger, Enum
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from datetime import datetime
 from typing import List
 
 from database.base import Base
+
+
+class RoundStatus(str, enum.Enum):
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    ERROR = "error"
 
 
 class User(Base):
@@ -27,6 +35,7 @@ class Round(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     duration_minutes: Mapped[int] = mapped_column(Integer, default=5)
     round_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[RoundStatus] = mapped_column(Enum(RoundStatus), default=RoundStatus.IN_PROGRESS, nullable=False)
 
     meetings: Mapped[List["Meeting"]] = relationship("Meeting", back_populates="round", cascade="all, delete-orphan")
 

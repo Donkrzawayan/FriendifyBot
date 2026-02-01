@@ -8,7 +8,7 @@ import asyncio
 from bot.checks import is_in_correct_channel, is_session_manager
 from config import settings
 from database.base import async_session_factory
-from database.models import User, Round, Meeting
+from database.models import RoundStatus, User, Round, Meeting
 from database.repository import MeetingRepository
 from services.matchmaker import MatchmakerService
 from services.voice_service import VoiceService
@@ -249,9 +249,7 @@ class SessionCog(commands.Cog):
                 await session.merge(User(id=member.id, username=member.name))
 
             new_round = Round(
-                guild_id=ctx.guild.id,
-                round_number=1,
-                duration_minutes=duration,
+                guild_id=ctx.guild.id, round_number=1, duration_minutes=duration, status=RoundStatus.IN_PROGRESS
             )
             session.add(new_round)
             await session.flush()  # Get ID
@@ -328,12 +326,16 @@ class SessionCog(commands.Cog):
             else:
                 await asyncio.sleep(seconds)
 
+            await self._update_round_status(round_id, RoundStatus.COMPLETED)
+
         except asyncio.CancelledError:
             logger.info(f"Round {round_id}: Cancelled manually.")
+            await self._update_round_status(round_id, RoundStatus.CANCELLED)
             raise
 
         except Exception:
             logger.error(f"Round {round_id}: CRITICAL ERROR during lifecycle!", exc_info=True)
+            await self._update_round_status(round_id, RoundStatus.ERROR)
 
         finally:
             logger.info(f"Round {round_id}: Cleanup started.")
@@ -381,6 +383,18 @@ class SessionCog(commands.Cog):
 
         if vc:
             await vc.disconnect()
+
+    async def _update_round_status(self, round_id: int, status: RoundStatus):
+        """Helper to update round status in DB safely."""
+        try:
+            async with async_session_factory() as session:
+                round_obj = await session.get(Round, round_id)
+                if round_obj:
+                    round_obj.status = status
+                    await session.commit()
+                    logger.info(f"Round {round_id} status updated to: {status.value}")
+        except Exception as e:
+            logger.error(f"Failed to update status for round {round_id}: {e}")
 
 
 async def setup(bot):
