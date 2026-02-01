@@ -71,6 +71,59 @@ class SessionCog(commands.Cog):
 
         self.current_round_task.cancel()
 
+    @commands.command(name="moveto")
+    @is_session_manager()
+    async def move_to(self, ctx: commands.Context, target_channel: discord.VoiceChannel):
+        """
+        Usage: !moveto <Target_Channel_ID_or_Name>
+        """
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            await ctx.reply("You must be in a Voice or Stage channel to use this command!")
+            return
+
+        source_channel = ctx.author.voice.channel
+        members_to_move = source_channel.members
+        count = len(members_to_move)
+
+        if count == 0:
+            await ctx.reply("There is no one in this channel.")
+            return
+
+        logger.info(f"Command !moveto: Moving {count} users from {source_channel.name} to {target_channel.name}")
+        status_msg = await ctx.send(
+            f"Moving **{count}** users from **{source_channel.name}** to **{target_channel.name}**..."
+        )
+
+        tasks = []
+        for member in members_to_move:
+            tasks.append(member.move_to(target_channel))
+
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            errors = [r for r in results if isinstance(r, Exception)]
+
+            if not errors:
+                logger.info("Moving completed successfully.")
+                await status_msg.edit(content=f"Successfully moved **{count}** users to **{target_channel.name}**.")
+                return
+
+            if any(isinstance(e, discord.Forbidden) for e in errors):
+                await status_msg.edit(content="Error: Missing 'Move Members' permission or access to the channel.")
+                logger.error("Forbidden error while moving members.")
+            else:
+                failed_count = len(errors)
+                await status_msg.edit(
+                    content=(
+                        f"Partial success: Moved **{count - failed_count}** users to **{target_channel.name}**.\n"
+                        f"Failed to move **{failed_count}** users."
+                    )
+                )
+                logger.error(f"Errors occurred while moving some members: {errors}")
+
+        except Exception as e:
+            await status_msg.edit(content="An unexpected error occurred during the move.")
+            logger.error(f"Unexpected error during move: {e}")
+
     @commands.command(name="history", help="Sends you a private message with your last 10 meetings.")
     async def history(self, ctx: commands.Context):
         source = f"Guild: {ctx.guild.id}" if ctx.guild else "DM"
