@@ -8,6 +8,8 @@ Built with **Python**, **Discord.py**, and **PostgreSQL**, it uses graph theory 
 
 * **Smart Matchmaking:** Uses a "Time-Weighted" algorithm. The bot prefers creating pairs that have never met. If repeats are necessary, it prioritizes the "oldest" connections.
 * **Voice Automation:** Automatically creates temporary voice channels, moves participants, signals time limits (audio & text), and returns everyone to the lobby after the round.
+* **Round Status Tracking:** Tracks the lifecycle of every round in the database (In Progress, Completed, Cancelled, Error) for better reliability and statistics.
+* **Bulk Move Tools:** Admins can instantly move all users from one channel to another using `!moveto`.
 * **Persistent History:** All meetings are stored in a PostgreSQL database.
 * **Dockerized:** Fully containerized with Docker Compose for easy deployment.
 * **Secure:** Commands are restricted by Roles and specific Text Channels.
@@ -15,9 +17,10 @@ Built with **Python**, **Discord.py**, and **PostgreSQL**, it uses graph theory 
 
 ## Tech Stack
 
-* **Language:** Python 3.12+
+* **Language:** Python 3.14
 * **Framework:** Discord.py
 * **Database:** PostgreSQL 17 (Async SQLAlchemy 2.0)
+* **Migrations:** Alembic
 * **Algorithms:** NetworkX (Max Weight Matching)
 * **Deployment:** Docker & Docker Compose
 
@@ -55,6 +58,12 @@ Build and start the containers (Bot + Database).
 ```bash
 docker-compose up -d --build
 ```
+
+### 4. Apply Database Migrations
+Once the database container is running, apply the Alembic migrations to create/update tables.
+```bash
+docker-compose run --rm bot alembic upgrade head
+```
 To stop it, use `docker-compose stop`.
 
 ## Usage
@@ -66,7 +75,10 @@ Requires the role defined in `ALLOWED_ROLE_ID`.
 - `!start <minutes>`  
 Starts a new speed friending round.
 - `!stop`  
-Immediately stops the current round, deletes temporary channels, and moves everyone back to the lobby.
+Immediately stops the current round, updates the round status to `CANCELLED`, deletes temporary channels, and moves everyone back to the lobby.
+- `!moveto <Target_Channel>`  
+Moves all users from the voice channel you are currently in to the `Target_Channel`.
+  - Example: `!moveto "Lobby"` or `!moveto 1234567890`
 
 ### User Commands
 
