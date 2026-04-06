@@ -10,7 +10,12 @@ class VoiceService:
         self.category: Optional[discord.CategoryChannel] = None
         self.temp_channels: List[discord.VoiceChannel] = []
 
-    async def prepare_channels(self, pair_count: int) -> List[discord.VoiceChannel]:
+    async def move_pairs_to_new_channels(self, pairs: List[Tuple[int, int]], user_id_map: Dict[int, discord.Member]):
+        """
+        Args:
+            pairs: List of tuples (user_id_1, user_id_2)
+            user_id_map: Dictionary mapping ID -> Discord Member Object
+        """
         existing_category = discord.utils.get(self.guild.categories, name=self.category_name)
         if not existing_category:
             self.category = await self.guild.create_category(self.category_name)
@@ -18,38 +23,33 @@ class VoiceService:
             self.category = existing_category
 
         self.temp_channels = []
-        for i in range(pair_count):
-            channel_name = f"Session {i + 1}"
-            channel = await self.guild.create_voice_channel(channel_name, category=self.category)
-            self.temp_channels.append(channel)
+        move_tasks = []
 
-        return self.temp_channels
-
-    async def move_pairs_to_channels(self, pairs: List[Tuple[int, int]], user_id_map: Dict[int, discord.Member]):
-        """
-        :param pairs: List of tuples (user_id_1, user_id_2)
-        :param user_id_map: Dictionary mapping ID -> Discord Member Object
-        """
-        tasks = []
-
-        for i, (uid1, uid2) in enumerate(pairs):
-            if i >= len(self.temp_channels):
-                break
-
-            target_channel = self.temp_channels[i]
-
+        async def create_channel_with_perms_and_move(i: int, uid1: int, uid2: int):
             member1 = user_id_map.get(uid1)
             member2 = user_id_map.get(uid2)
 
-            await target_channel.set_permissions(member1, connect=True, speak=True, view_channel=True)
-            await target_channel.set_permissions(member2, connect=True, speak=True, view_channel=True)
+            overwrites = {}
+            if member1:
+                overwrites[member1] = discord.PermissionOverwrite(connect=True, speak=True, view_channel=True)
+            if member2:
+                overwrites[member2] = discord.PermissionOverwrite(connect=True, speak=True, view_channel=True)
+
+            channel_name = f"Session {i + 1}"
+
+            channel = await self.guild.create_voice_channel(channel_name, category=self.category, overwrites=overwrites)
+            self.temp_channels.append(channel)
 
             if member1 and member1.voice:
-                tasks.append(member1.move_to(target_channel))
+                move_tasks.append(member1.move_to(channel))
             if member2 and member2.voice:
-                tasks.append(member2.move_to(target_channel))
+                move_tasks.append(member2.move_to(channel))
 
-        await asyncio.gather(*tasks)
+        create_tasks = [create_channel_with_perms_and_move(i, uid1, uid2) for i, (uid1, uid2) in enumerate(pairs)]
+        await asyncio.gather(*create_tasks)
+
+        if move_tasks:
+            await asyncio.gather(*move_tasks)
 
     async def return_users_to_lobby(
         self, users: List[discord.Member], lobby_channel: Union[discord.VoiceChannel, discord.StageChannel]
