@@ -20,8 +20,7 @@ class SessionCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.matchmaker = MatchmakerService()
-        self.current_round_task: Optional[asyncio.Task] = None
-        self.is_running: bool = False
+        self.active_rounds: Dict[int, asyncio.Task] = {}
 
     async def cog_check(self, ctx: commands.Context) -> bool:
         return await is_in_correct_channel().predicate(ctx)
@@ -30,7 +29,8 @@ class SessionCog(commands.Cog):
     @is_session_manager()
     async def start_round(self, ctx: commands.Context, duration_minutes: int = 5):
         logger.info(f"Command !start called by {ctx.author} (Guild: {ctx.guild.id}, Duration: {duration_minutes}m)")
-        if self.is_running:
+
+        if ctx.guild.id in self.active_rounds:
             logger.warning(f"User {ctx.author} tried to start a round while one is running.")
             await ctx.reply("A round is already in progress! Use `!stop` to end it first.")
             return
@@ -40,7 +40,6 @@ class SessionCog(commands.Cog):
             return
 
         participants, sitter, user_map = self._prepare_participants(ctx, lobby_channel)
-
         if len(participants) < 2:
             await ctx.reply("Not enough people to start (minimum 2).")
             return
@@ -54,9 +53,8 @@ class SessionCog(commands.Cog):
 
         self._log_match_results(round_id, pairs, sitter, user_map)
 
-        logger.info("Starting lifecycle task...")
-        self.is_running = True
-        self.current_round_task = asyncio.create_task(
+        logger.info(f"Round {round_id}: Starting lifecycle task...")
+        self.active_rounds[ctx.guild.id] = asyncio.create_task(
             self._round_lifecycle(ctx, pairs, sitter, user_map, lobby_channel, duration_minutes, round_id)
         )
 
@@ -64,12 +62,14 @@ class SessionCog(commands.Cog):
     @is_session_manager()
     async def stop_round(self, ctx: commands.Context):
         logger.info(f"Command !stop called by {ctx.author} (Guild: {ctx.guild.id})")
-        if not self.is_running or not self.current_round_task:
+
+        current_task = self.active_rounds.get(ctx.guild.id)
+        if not current_task:
             logger.warning(f"User {ctx.author} tried to stop a round while one is not running.")
             await ctx.reply("There is no round currently running.")
             return
 
-        self.current_round_task.cancel()
+        current_task.cancel()
 
     @commands.command(name="moveto")
     @is_session_manager()
@@ -298,8 +298,8 @@ class SessionCog(commands.Cog):
 
         try:
             logger.info(f"Round {round_id}: Preparing channels for {len(pairs)} pairs.")
-            await voice_mgr.prepare_channels(len(pairs))
-            await voice_mgr.move_pairs_to_channels(pairs, user_map)
+            
+            await voice_mgr.move_pairs_to_new_channels(pairs, user_map)
 
             seconds = duration_minutes * 60
             warning_time = 30
@@ -354,8 +354,7 @@ class SessionCog(commands.Cog):
 
             await voice_mgr.cleanup()
 
-            self.is_running = False
-            self.current_round_task = None
+            self.active_rounds.pop(ctx.guild.id, None)
             logger.info(f"Round {round_id}: Cleanup finished.")
 
     async def _signal_channels(self, ctx: commands.Context, channels: List[discord.VoiceChannel], delay: float):
@@ -382,7 +381,10 @@ class SessionCog(commands.Cog):
                     break
 
         if vc:
-            await vc.disconnect()
+            try:
+                await vc.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting voice client: {e}")
 
     async def _update_round_status(self, round_id: int, status: RoundStatus):
         """Helper to update round status in DB safely."""
@@ -394,7 +396,7 @@ class SessionCog(commands.Cog):
                     await session.commit()
                     logger.info(f"Round {round_id} status updated to: {status.value}")
         except Exception as e:
-            logger.error(f"Failed to update status for round {round_id}: {e}")
+            logger.error(f"Round {round_id}: Failed to update status: {e}")
 
 
 async def setup(bot):

@@ -1,4 +1,4 @@
-discord.py
+discord.py>=2.7.1
 sqlalchemy
 asyncpg
 alembic
@@ -7,5 +7,6 @@ pydantic
 pydantic-settings
 networkx
 pytest
-PyNaCl
+PyNaCl>=1.6.2
+davey>=0.1.5
 tzdata
