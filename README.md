@@ -40,7 +40,6 @@ Create a .env file in the root directory.
 # Discord Configuration
 DISCORD_TOKEN=discord_bot_token
 ALLOWED_ROLE_ID=123456789012345678       # ID of the role allowed to manage sessions
-ALLOWED_CHANNEL_IDS=[123456789012345678] # List of Channel IDs where bot listens to commands
 
 # Database Configuration
 POSTGRES_USER=postgres
@@ -79,6 +78,10 @@ Immediately stops the current round, updates the round status to `CANCELLED`, de
 - `!moveto <Target_Channel>`  
 Moves all users from the voice channel you are currently in to the `Target_Channel`.
   - Example: `!moveto "Lobby"` or `!moveto 1234567890`
+- `!setchannel [channel]`  
+Sets the specific channel where the bot listens to commands. Defaults to the current channel.
+- `!clearchannel`  
+Removes the channel restriction, allowing the bot to respond to commands in all channels.
 
 ### User Commands
 
