@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from typing import Dict, List, Tuple
-from database.models import Meeting, Round
+from typing import Dict, List, Sequence, Tuple
+from database.models import GuildSettings, Meeting, Round
 
 
 class MeetingRepository:
@@ -41,7 +41,7 @@ class MeetingRepository:
 
         return history_map
 
-    async def get_user_history(self, user_id: int, limit: int = 10) -> List[Meeting]:
+    async def get_user_history(self, user_id: int, limit: int = 10) -> Sequence[Meeting]:
         stmt = (
             select(Meeting)
             .join(Round, Meeting.round_id == Round.id)
@@ -59,3 +59,24 @@ class MeetingRepository:
                 meeting.round.started_at = meeting.round.started_at.replace(tzinfo=timezone.utc)
 
         return meetings
+
+
+class GuildSettingsRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_settings(self, guild_id: int) -> GuildSettings | None:
+        return await self.session.get(GuildSettings, guild_id)
+
+    async def set_allowed_channel(self, guild_id: int, channel_id: int | None) -> GuildSettings:
+        """Upserts guild settings with the new channel_id."""
+        settings = await self.session.get(GuildSettings, guild_id)
+
+        if not settings:
+            settings = GuildSettings(guild_id=guild_id, channel_id=channel_id)
+            self.session.add(settings)
+        else:
+            settings.channel_id = channel_id
+
+        await self.session.flush()
+        return settings

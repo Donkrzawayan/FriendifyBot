@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 import asyncio
 
-from bot.checks import is_in_correct_channel, is_session_manager
+from bot.checks import WrongChannelError, is_in_correct_channel, is_session_manager
 from config import settings
 from database.base import async_session_factory
 from database.models import RoundStatus, User, Round, Meeting
@@ -176,14 +176,14 @@ class SessionCog(commands.Cog):
             logger.info(f"Couldn't send DM to {ctx.author} ({source})")
             await ctx.reply(f"{ctx.author.mention}, could not send a DM. Please enable DMs from server members.")
 
-    @start_round.error
-    @stop_round.error
-    async def session_error_handler(self, ctx: commands.Context, error):
-        if isinstance(error, commands.CheckFailure):
-            if ctx.guild and settings.ALLOWED_CHANNEL_IDS:
-                if ctx.channel.id not in settings.ALLOWED_CHANNEL_IDS:
-                    return
+    async def cog_command_error(self, ctx: commands.Context, error):
+        if hasattr(error, "original"):
+            error = error.original
 
+        if isinstance(error, WrongChannelError):
+            return
+
+        if isinstance(error, commands.CheckFailure):
             logger.warning(f"Unauthorized access attempt by {ctx.author} (Command: {ctx.command})")
             await ctx.reply("**Access denied!** You do not have permission to manage sessions.")
 
@@ -298,7 +298,7 @@ class SessionCog(commands.Cog):
 
         try:
             logger.info(f"Round {round_id}: Preparing channels for {len(pairs)} pairs.")
-            
+
             await voice_mgr.move_pairs_to_new_channels(pairs, user_map)
 
             seconds = duration_minutes * 60

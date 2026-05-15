@@ -1,6 +1,12 @@
 import discord
 from discord.ext import commands
 from config import settings
+from database.base import async_session_factory
+from database.repository import GuildSettingsRepository
+
+
+class WrongChannelError(commands.CheckFailure):
+    pass
 
 
 def is_session_manager():
@@ -29,12 +35,16 @@ def is_in_correct_channel():
         if ctx.guild is None:
             return True
 
-        if not settings.ALLOWED_CHANNEL_IDS:
+        async with async_session_factory() as session:
+            repo = GuildSettingsRepository(session)
+            guild_settings = await repo.get_settings(ctx.guild.id)
+
+        if not guild_settings or not guild_settings.channel_id:
             return True
 
-        if ctx.channel.id in settings.ALLOWED_CHANNEL_IDS:
+        if ctx.channel.id == guild_settings.channel_id:
             return True
 
-        return False
+        raise WrongChannelError()
 
     return commands.check(predicate)

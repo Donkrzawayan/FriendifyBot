@@ -26,6 +26,7 @@ async def on_ready():
 async def main():
     async with bot:
         await bot.load_extension("bot.cogs.session_cog")
+        await bot.load_extension("bot.cogs.settings_cog")
         await bot.start(settings.DISCORD_TOKEN)
 
 

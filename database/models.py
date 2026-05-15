@@ -60,3 +60,13 @@ class Meeting(Base):
 
     def __repr__(self):
         return f"<Meeting(round={self.round_id}, u1={self.user_1_id}, u2={self.user_2_id})>"
+
+
+class GuildSettings(Base):
+    __tablename__ = "guild_settings"
+
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+
+    def __repr__(self):
+        return f"<GuildSettings(guild={self.guild_id}, channel={self.channel_id})>"
