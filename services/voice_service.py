@@ -1,6 +1,10 @@
+import logging
+
 import discord
 import asyncio
 from typing import Dict, List, Tuple, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 
 class VoiceService:
@@ -69,3 +73,31 @@ class VoiceService:
                 pass
 
         self.temp_channels = []
+
+    async def signal_channels(self, delay: float):
+        vc = self.guild.voice_client
+
+        if not vc:
+            try:
+                if self.temp_channels:
+                    vc = await self.temp_channels[0].connect()
+            except Exception as e:
+                logger.warning(f"Failed to connect to voice for signaling: {e}")
+                return
+
+        for channel in self.temp_channels:
+            try:
+                if vc.channel.id != channel.id:
+                    await vc.move_to(channel)
+                await asyncio.sleep(delay)
+            except Exception as e:
+                logger.warning(f"Failed to signal channel {channel.name}: {e}")
+                vc = self.guild.voice_client
+                if not vc:
+                    break
+
+        if vc:
+            try:
+                await vc.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting voice client: {e}")
