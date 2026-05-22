@@ -1,5 +1,7 @@
 # FriendifyBot
 
+[![invite-bot-shield]][invite-bot]
+
 **FriendifyBot** is an advanced Discord bot designed to automate "Speed-Friending" sessions. It handles the entire lifecycle of a session: from pairing users based on history to moving them between voice channels automatically.
 
 Built with **Python**, **Discord.py**, and **PostgreSQL**, it uses graph theory (`networkx`) to ensure optimal pairings, prioritizing people who haven't met yet or met the longest time ago.
@@ -8,6 +10,7 @@ Built with **Python**, **Discord.py**, and **PostgreSQL**, it uses graph theory 
 
 * **Smart Matchmaking:** Uses a "Time-Weighted" algorithm. The bot prefers creating pairs that have never met. If repeats are necessary, it prioritizes the "oldest" connections.
 * **Voice Automation:** Automatically creates temporary voice channels, moves participants, signals time limits (audio & text), and returns everyone to the lobby after the round.
+  * ***Note on Rate Limits:*** Moving multiple users between channels is not completely instantaneous due to Discord API rate limits. For larger groups, the transition may take a few seconds as the bot safely respects these limits to avoid getting rate-limited.
 * **Round Status Tracking:** Tracks the lifecycle of every round in the database (In Progress, Completed, Cancelled, Error) for better reliability and statistics.
 * **Bulk Move Tools:** Admins can instantly move all users from one channel to another using `!moveto`.
 * **Persistent History:** All meetings are stored in a PostgreSQL database.
@@ -73,6 +76,7 @@ Requires the role defined in `ALLOWED_ROLE_ID`.
 
 - `!start <minutes>`  
 Starts a new speed friending round.
+  - **Moving multiple users between channels is not completely instantaneous due to Discord API rate limits.**
 - `!stop`  
 Immediately stops the current round, updates the round status to `CANCELLED`, deletes temporary channels, and moves everyone back to the lobby.
 - `!moveto <Target_Channel>`  
@@ -103,3 +107,6 @@ You are free to:
 Under the following terms:
 - Attribution — You must give appropriate credit.
 - NonCommercial — You may not use the material for commercial purposes.
+
+[invite-bot]: https://discord.com/oauth2/authorize?client_id=1452711626229678110&permissions=20130832&integration_type=0&scope=bot+applications.commands
+[invite-bot-shield]: https://img.shields.io/badge/Discord-Click_to_get_FriendifyBot-5865F2.svg
